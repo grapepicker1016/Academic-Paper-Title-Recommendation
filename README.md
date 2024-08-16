@@ -264,13 +264,13 @@ and play!
 You can cite (not necessary at all) if you use checkpoints/codes/processed data.
 
 ```tex
-@misc{safakb/eness,
+@misc{joseph/eness,
   author = {M. Safak BILICI, E. Sadi UYSAL},
   title = {Generating Titles With Sequential Models},
   year = {2020},
   publisher = {GitHub},
   journal = {GitHub repository},
-  howpublished = {\url{https://github.com/safakkbilici/Academic-Paper-Title-Recommendation}}
+  howpublished = {\url{https://github.com/josephkasnoff1127/Academic-Paper-Title-Recommendation}}
 }
 ```
 
