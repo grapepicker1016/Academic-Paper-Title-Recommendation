@@ -1,8 +1,6 @@
-import nltk
 import re
-from nltk.tokenize import sent_tokenize, word_tokenize, RegexpTokenizer
+from nltk.tokenize import RegexpTokenizer
 from nltk.corpus import stopwords
-nltk.download('stopwords')
 
 def absTokenizer1(regex, abstracts):
     """
