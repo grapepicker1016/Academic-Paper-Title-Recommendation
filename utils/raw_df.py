@@ -1,4 +1,7 @@
-from helpers.json_parser import json2csv
+from utils.json_parser import json2csv
+import pandas as pd
 
-
-df = json2csv('/media/safak/Data/Datasets/arXiv Dataset/arxiv-metadata-oai-snapshot-2020-08-14.json')
+def raw(path, filename, save_dir):
+    df_raw = json2csv(path+filename, save_dir)
+    print('raw_df.csv is created...')
+    return df_raw

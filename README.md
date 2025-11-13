@@ -60,34 +60,7 @@ python3 prep_data.py --datapath /path/to/your_json_file.json
 This script parses your .json file then converts into .csv file, after that it does NLP techniques for abstracts.
 After this script, you will have ./data/df_to_model.csv file. You can use it for training from scratch. 
 
-## Seq2Seq LSTM
-Seq2Seq LSTM is written with Keras. The summary of model looks like:
-
-    Layer (type)                    Output Shape         Param #     Connected to                     
-    ==================================================================================================
-    encoder_inputs (InputLayer)     [(None, None)]       0                                            
-    __________________________________________________________________________________________________
-    encoder_embedding (Embedding)   (None, None, 100)    500200      encoder_inputs[0][0]             
-    __________________________________________________________________________________________________
-    decoder_inputs (InputLayer)     [(None, None, 2001)] 0                                            
-    __________________________________________________________________________________________________
-    encoder_lstm (LSTM)             [(None, 100), (None, 80400       encoder_embedding[0][0]          
-    __________________________________________________________________________________________________
-    decoder_lstm (LSTM)             [(None, None, 100),  840800      decoder_inputs[0][0]             
-                                                                     encoder_lstm[0][1]               
-                                                                     encoder_lstm[0][2]               
-    __________________________________________________________________________________________________
-    decoder_dense (Dense)           (None, None, 2001)   202101      decoder_lstm[0][0]               
-    ==================================================================================================
-    Total params: 1,623,501
-    Trainable params: 1,623,501
-    Non-trainable params: 0
-    __________________________________________________________________________________________________
-
-Additional: Also you can choose your Seq2Seq LSTM summarizer with global vectors for word representation (GloVe).
-We trained seq2seq LSTM on Colab's Tesla K80, with 11 GB of GPU RAM for 11 hours.
-
-The Seq2Seq LSTM model can learn wording of academic titles and capture the main topic of the paper, but it cannot specify the title. Results are not sufficient.
+## Training
 
 ### Training from scratch
 
@@ -96,7 +69,7 @@ First extract the .csv file from ./data/df_to_model.tar.gz to ./data folder (or 
 Then run the training scripts
 
 ```bash
-python3 train_lstm.py
+python3 train.py --model_name [lstm|lstm_glove|lstm_glove_v2|t5]
 ```
 
 ### Generate titles from checkpoints
@@ -104,7 +77,7 @@ python3 train_lstm.py
 ./models folder contains checkpoints for specific epochs. Move your .json, .npy and .h5 file into ./modes (default = epoch 100). Then run
 
 ```bash
-python3 generate_lstm.py --abstract /path/to/your_abstract_file.txt
+python3 generate.py --abstract /path/to/your_abstract_file.txt
 ```
 
 Then the generated title will be saved in ./docs/titles folder.
