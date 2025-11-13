@@ -6,57 +6,55 @@ from keras.preprocessing.sequence import pad_sequences
 from keras.callbacks import ModelCheckpoint
 import numpy as np
 import os
-
-from ...library.utility.glove_loader import load_glove, GLOVE_EMBEDDING_SIZE
 import sys
+
 # Add the project root to the python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', '..')))
+from models.base_model import BaseModel
+from ...library.utility.glove_loader import load_glove, GLOVE_EMBEDDING_SIZE
 from config.lstm_config import HIDDEN_UNITS, DEFAULT_BATCH_SIZE, VERBOSE, DEFAULT_EPOCHS
 
 
-class Seq2SeqGloVeSummarizerV2(object):
+class Seq2SeqGloVeSummarizerV2(BaseModel):
 
     model_name = 'seq2seq-glove-v2'
 
     def __init__(self, config):
-        self.max_input_seq_length = config['max_input_seq_length']
-        self.num_target_tokens = config['num_target_tokens']
-        self.max_target_seq_length = config['max_target_seq_length']
-        self.target_word2idx = config['target_word2idx']
-        self.target_idx2word = config['target_idx2word']
-        self.version = 0
-        if 'version' in config:
-            self.version = config['version']
+        super().__init__(config)
+        self.max_input_seq_length = self.config.get('max_input_seq_length')
+        self.num_target_tokens = self.config.get('num_target_tokens')
+        self.max_target_seq_length = self.config.get('max_target_seq_length')
+        self.target_word2idx = self.config.get('target_word2idx')
+        self.target_idx2word = self.config.get('target_idx2word')
+        self.model = None
+        self.encoder_model = None
+        self.decoder_model = None
+        self.version = self.config.get('version', 0)
+        self.word2em = self.config.get('word2em', {})
+        self.unknown_emb = self.config.get('unknown_emb', np.random.rand(1, GLOVE_EMBEDDING_SIZE))
 
-        self.word2em = dict()
-        if 'unknown_emb' in config:
-            self.unknown_emb = config['unknown_emb']
-        else:
-            self.unknown_emb = np.random.rand(1, GLOVE_EMBEDDING_SIZE)
-            config['unknown_emb'] = self.unknown_emb
-
-        self.config = config
-
+    def build(self):
+        # Encoder
         encoder_inputs = Input(shape=(None, GLOVE_EMBEDDING_SIZE), name='encoder_inputs')
         encoder_lstm = LSTM(units=HIDDEN_UNITS, return_state=True, name='encoder_lstm')
-        encoder_outputs, encoder_state_h, encoder_state_c = encoder_lstm(encoder_inputs)
+        _, encoder_state_h, encoder_state_c = encoder_lstm(encoder_inputs)
         encoder_states = [encoder_state_h, encoder_state_c]
 
+        # Decoder
         decoder_inputs = Input(shape=(None, GLOVE_EMBEDDING_SIZE), name='decoder_inputs')
         decoder_lstm = LSTM(units=HIDDEN_UNITS, return_state=True, return_sequences=True, name='decoder_lstm')
-        decoder_outputs, decoder_state_h, decoder_state_c = decoder_lstm(decoder_inputs,
-                                                                         initial_state=encoder_states)
+        decoder_outputs, _, _ = decoder_lstm(decoder_inputs, initial_state=encoder_states)
         decoder_dense = Dense(units=self.num_target_tokens, activation='softmax', name='decoder_dense')
         decoder_outputs = decoder_dense(decoder_outputs)
 
-        model = Model([encoder_inputs, decoder_inputs], decoder_outputs)
+        # Full Model
+        self.model = Model([encoder_inputs, decoder_inputs], decoder_outputs)
+        self.model.compile(loss='categorical_crossentropy', optimizer='rmsprop', metrics=['accuracy'])
 
-        model.compile(loss='categorical_crossentropy', optimizer='rmsprop', metrics=['accuracy'])
-
-        self.model = model
-
+        # Encoder Model for Inference
         self.encoder_model = Model(encoder_inputs, encoder_states)
 
+        # Decoder Model for Inference
         decoder_state_inputs = [Input(shape=(HIDDEN_UNITS,)), Input(shape=(HIDDEN_UNITS,))]
         decoder_outputs, state_h, state_c = decoder_lstm(decoder_inputs, initial_state=decoder_state_inputs)
         decoder_states = [state_h, state_c]
@@ -70,140 +68,71 @@ class Seq2SeqGloVeSummarizerV2(object):
     def load_glove(self, data_dir_path):
         self.word2em = load_glove(data_dir_path)
 
-    def transform_input_text(self, texts):
-        temp = []
-        for line in texts:
-            x = np.zeros(shape=(self.max_input_seq_length, GLOVE_EMBEDDING_SIZE))
-            for idx, word in enumerate(line.lower().split(' ')):
-                if idx >= self.max_input_seq_length:
-                    break
-                emb = self.unknown_emb
-                if word in self.word2em:
-                    emb = self.word2em[word]
-                x[idx, :] = emb
-            temp.append(x)
-        temp = pad_sequences(temp, maxlen=self.max_input_seq_length)
-
-        print(temp.shape)
-        return temp
-
-    def transform_target_encoding(self, texts):
-        temp = []
-        for line in texts:
-            x = []
-            line2 = 'start ' + line.lower() + ' end'
-            for word in line2.split(' '):
-                x.append(word)
-                if len(x) >= self.max_target_seq_length:
-                    break
-            temp.append(x)
-
-        temp = np.array(temp)
-        print(temp.shape)
-        return temp
-
-    def generate_batch(self, x_samples, y_samples, batch_size):
-        num_batches = len(x_samples) // batch_size
-        while True:
-            for batchIdx in range(0, num_batches):
-                start = batchIdx * batch_size
-                end = (batchIdx + 1) * batch_size
-                encoder_input_data_batch = pad_sequences(x_samples[start:end], self.max_input_seq_length)
-                decoder_target_data_batch = np.zeros(shape=(batch_size, self.max_target_seq_length, self.num_target_tokens))
-                decoder_input_data_batch = np.zeros(shape=(batch_size, self.max_target_seq_length, GLOVE_EMBEDDING_SIZE))
-                for lineIdx, target_words in enumerate(y_samples[start:end]):
-                    for idx, w in enumerate(target_words):
-                        w2idx = 0  # default [UNK]
-                        if w in self.word2em:
-                            emb = self.unknown_emb
-                            decoder_input_data_batch[lineIdx, idx, :] = emb
-                        if w in self.target_word2idx:
-                            w2idx = self.target_word2idx[w]
-                        if w2idx != 0:
-                            if idx > 0:
-                                decoder_target_data_batch[lineIdx, idx - 1, w2idx] = 1
-                yield [encoder_input_data_batch, decoder_input_data_batch], decoder_target_data_batch
-
-    @staticmethod
-    def get_weight_file_path(model_dir_path):
-        return os.path.join(model_dir_path, Seq2SeqGloVeSummarizerV2.model_name + '-weights.h5')
-
-    @staticmethod
-    def get_config_file_path(model_dir_path):
-        return os.path.join(model_dir_path, Seq2SeqGloVeSummarizerV2.model_name + '-config.npy')
-
-    @staticmethod
-    def get_architecture_file_path(model_dir_path):
-        return os.path.join(model_dir_path, Seq2SeqGloVeSummarizerV2.model_name + '-architecture.json')
-
-    def fit(self, Xtrain, Ytrain, Xtest, Ytest, epochs=None, batch_size=None, model_dir_path=None):
-        if epochs is None:
-            epochs = DEFAULT_EPOCHS
-        if model_dir_path is None:
-            model_dir_path = './models'
-        if batch_size is None:
-            batch_size = DEFAULT_BATCH_SIZE
+    def train(self, train_gen, val_gen, train_num_batches, val_num_batches, epochs=DEFAULT_EPOCHS, model_dir_path='./models'):
+        if self.model is None:
+            self.build()
 
         self.version += 1
         self.config['version'] = self.version
-        config_file_path = Seq2SeqGloVeSummarizerV2.get_config_file_path(model_dir_path)
-        weight_file_path = Seq2SeqGloVeSummarizerV2.get_weight_file_path(model_dir_path)
-        checkpoint = ModelCheckpoint(weight_file_path)
+
+        config_file_path = os.path.join(model_dir_path, self.model_name + '-config.npy')
+        weight_file_path = os.path.join(model_dir_path, self.model_name + '-weights.h5')
+        architecture_file_path = os.path.join(model_dir_path, self.model_name + '-architecture.json')
+
         np.save(config_file_path, self.config)
-        architecture_file_path = Seq2SeqGloVeSummarizerV2.get_architecture_file_path(model_dir_path)
-        open(architecture_file_path, 'w').write(self.model.to_json())
+        with open(architecture_file_path, 'w') as f:
+            f.write(self.model.to_json())
 
-        Ytrain = self.transform_target_encoding(Ytrain)
-        Ytest = self.transform_target_encoding(Ytest)
+        checkpoint = ModelCheckpoint(weight_file_path, save_best_only=True, save_weights_only=True)
 
-        Xtrain = self.transform_input_text(Xtrain)
-        Xtest = self.transform_input_text(Xtest)
-
-        train_gen = self.generate_batch(Xtrain, Ytrain, batch_size)
-        test_gen = self.generate_batch(Xtest, Ytest, batch_size)
-
-        train_num_batches = len(Xtrain) // batch_size
-        test_num_batches = len(Xtest) // batch_size
-
-        history = self.model.fit_generator(generator=train_gen, steps_per_epoch=train_num_batches,
-                                           epochs=epochs,
-                                           verbose=VERBOSE, validation_data=test_gen, validation_steps=test_num_batches,
-                                           callbacks=[checkpoint])
+        history = self.model.fit_generator(
+            generator=train_gen,
+            steps_per_epoch=train_num_batches,
+            epochs=epochs,
+            verbose=VERBOSE,
+            validation_data=val_gen,
+            validation_steps=val_num_batches,
+            callbacks=[checkpoint]
+        )
         self.model.save_weights(weight_file_path)
         return history
 
     def summarize(self, input_text):
-        input_seq = np.zeros(shape=(1, self.max_input_seq_length, GLOVE_EMBEDDING_SIZE))
-        for idx, word in enumerate(input_text.lower().split(' ')):
-            if idx >= self.max_input_seq_length:
-                break
-            emb = self.unknown_emb  # default [UNK]
-            if word in self.word2em:
-                emb = self.word2em[word]
-            input_seq[0, idx, :] = emb
+        def transform_input_text(texts):
+            temp = []
+            for line in texts:
+                x = np.zeros((self.max_input_seq_length, GLOVE_EMBEDDING_SIZE))
+                for idx, word in enumerate(line.lower().split(' ')):
+                    if idx >= self.max_input_seq_length:
+                        break
+                    emb = self.word2em.get(word, self.unknown_emb)
+                    x[idx, :] = emb
+                temp.append(x)
+            return pad_sequences(temp, maxlen=self.max_input_seq_length)
+
+        input_seq = transform_input_text([input_text])
         states_value = self.encoder_model.predict(input_seq)
+
         target_seq = np.zeros((1, 1, GLOVE_EMBEDDING_SIZE))
         target_seq[0, 0, :] = self.word2em['start']
+
         target_text = ''
-        target_text_len = 0
         terminated = False
         while not terminated:
             output_tokens, h, c = self.decoder_model.predict([target_seq] + states_value)
 
             sample_token_idx = np.argmax(output_tokens[0, -1, :])
-            sample_word = self.target_idx2word[sample_token_idx]
-            target_text_len += 1
+            sample_word = self.target_idx2word.get(sample_token_idx)
 
-            if sample_word != 'start' and sample_word != 'end':
-                target_text += ' ' + sample_word
-
-            if sample_word == 'end' or target_text_len >= self.max_target__seq_length:
+            if sample_word is None or sample_word == 'end' or len(target_text.split()) >= self.max_target_seq_length:
                 terminated = True
-
-            if sample_word in self.word2em:
-                target_seq[0, 0, :] = self.word2em[sample_word]
             else:
-                target_seq[0, 0, :] = self.unknown_emb
+                if sample_word != 'start':
+                    target_text += ' ' + sample_word
 
-            states_value = [h, c]
+                emb = self.word2em.get(sample_word, self.unknown_emb)
+                target_seq = np.zeros((1, 1, GLOVE_EMBEDDING_SIZE))
+                target_seq[0, 0, :] = emb
+                states_value = [h, c]
+
         return target_text.strip()

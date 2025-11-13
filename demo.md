@@ -45,7 +45,6 @@ conda install -c anaconda flask
 
   * app.py
   * crawler
-  * generate_lstm.py
   * generate.py
   * helpers
   * lstm_seq2seq
@@ -57,7 +56,7 @@ conda install -c anaconda flask
   * static
   * T5
   * templates
-  * train_lstm.py
+  * train.py
   * utils
   * readme.txt
   * docs
