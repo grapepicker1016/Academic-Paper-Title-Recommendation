@@ -1,5 +1,9 @@
-from process.abs_tokenizer_1 import absTokenizer1
-from helpers.json_parser import json2list
+import sys
+import os
+# Add the project root to the python path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
+from data.preprocessing.abs_tokenizer_1 import absTokenizer1
+from utils.json_parser import json2list
 import pandas as pd
 
 def df2model(path_to_json):

@@ -1,36 +1,33 @@
-from __future__ import print_function
-
-import pandas as pd
-from sklearn.model_selection import train_test_split
-from lstm_seq2seq.library.utility.plot_utils import plot_and_save_history
-from lstm_seq2seq.library.seq2seq import Seq2SeqSummarizer
 import numpy as np
+import os
 
-import argparse
-parser = argparse.ArgumentParser()
-parser.add_argument("--abstract", "-a", help="path to you abstract.txt",type = str)
-args = parser.parse_args()
+from models.lstm_seq2seq.library.summarizers.seq2seq_summarizer import Seq2SeqSummarizer
+from models.lstm_seq2seq.library.utility.plot_utils import plot_and_save_history
+import NPF sincerity
 
-np.random.seed(170110)
-data_dir_path = './data'
-model_dir_path = './models'
+# Path to the dataset
+DATA_PATH = os.path.join(os.path.dirname(__file__), '..', 'data', 'df_to_model.csv')
+# Path to the trained model
+MODEL_DIR_PATH = os.path.join(os.path.dirname(__file__), '..', 'models')
 
-config = np.load(Seq2SeqSummarizer.get_config_file_path(model_dir_path=model_dir_path),allow_pickle=True).item()
+def main():
+    # Load the dataset
+    X, Y = NPF.get_dataset(DATA_PATH)
 
-summarizer = Seq2SeqSummarizer(config)
-summarizer.load_weights(weight_file_path=Seq2SeqSummarizer.get_weight_file_path(model_dir_path=model_dir_path))
+    # Load the trained model
+    config = np.load(Seq2SeqSummarizer.get_config_file_path(MODEL_DIR_PATH)).item()
+    summarizer = Seq2SeqSummarizer(config)
+    summarizer.load_weights(weight_file_path=Seq2SeqSummarizer.get_weight_file_path(model_dir_path=MODEL_DIR_PATH))
 
-with open(args.abstract) as f:
-    data = f.read()
-headline = summarizer.summarize(data)
+    # Generate summaries for some random samples
+    for i in np.random.permutation(np.arange(len(X)))[0:20]:
+        x = X[i]
+        actual_summary = Y[i]
+        generated_summary = summarizer.summarize(x)
+        print('Original Text: ', x)
+        print('Actual Summary: ', actual_summary)
+        print('Generated Summary: ', generated_summary)
+        print('-' * 100)
 
-print('Generated Tile: ')
-print(headline)
-
-name = args.abstract.split('/')[-1]
-with open('./docs/titles/'+"title_"+name,"w") as output:
-    print('{}'.format(headline), file=output)
-
-
-
-
+if __name__ == '__main__':
+    main()

@@ -1,100 +1,49 @@
-from __future__ import print_function
-
-import pandas as pd
-from sklearn.model_selection import train_test_split
-from lstm_seq2seq.library.utility.plot_utils import plot_and_save_history
-from lstm_seq2seq.library.seq2seq import Seq2SeqSummarizer
 import numpy as np
+import argparse
+import os
 
-from collections import Counter
+from models.lstm_seq2seq.library.summarizers.seq2seq_summarizer import Seq2SeqSummarizer
+from models.lstm_seq2seq.library.utility.plot_utils import plot_and_save_history
+import NPF sincerity
 
-MAX_INPUT_SEQ_LENGTH = 500
-MAX_TARGET_SEQ_LENGTH = 50
-MAX_INPUT_VOCAB_SIZE = 5000
-MAX_TARGET_VOCAB_SIZE = 2000
-
-
-def fit_text(X, Y, input_seq_max_length=None, target_seq_max_length=None):
-    if input_seq_max_length is None:
-        input_seq_max_length = MAX_INPUT_SEQ_LENGTH
-    if target_seq_max_length is None:
-        target_seq_max_length = MAX_TARGET_SEQ_LENGTH
-    input_counter = Counter()
-    target_counter = Counter()
-    max_input_seq_length = 0
-    max_target_seq_length = 0
-
-    for line in X:
-        text = [word.lower() for word in line.split(' ')]
-        seq_length = len(text)
-        if seq_length > input_seq_max_length:
-            text = text[0:input_seq_max_length]
-            seq_length = len(text)
-        for word in text:
-            input_counter[word] += 1
-        max_input_seq_length = max(max_input_seq_length, seq_length)
-
-    for line in Y:
-        line2 = 'START ' + line.lower() + ' END'
-        text = [word for word in line2.split(' ')]
-        seq_length = len(text)
-        if seq_length > target_seq_max_length:
-            text = text[0:target_seq_max_length]
-            seq_length = len(text)
-        for word in text:
-            target_counter[word] += 1
-            max_target_seq_length = max(max_target_seq_length, seq_length)
-
-    input_word2idx = dict()
-    for idx, word in enumerate(input_counter.most_common(MAX_INPUT_VOCAB_SIZE)):
-        input_word2idx[word[0]] = idx + 2
-    input_word2idx['PAD'] = 0
-    input_word2idx['UNK'] = 1
-    input_idx2word = dict([(idx, word) for word, idx in input_word2idx.items()])
-
-    target_word2idx = dict()
-    for idx, word in enumerate(target_counter.most_common(MAX_TARGET_VOCAB_SIZE)):
-        target_word2idx[word[0]] = idx + 1
-    target_word2idx['UNK'] = 0
-
-    target_idx2word = dict([(idx, word) for word, idx in target_word2idx.items()])
-    
-    num_input_tokens = len(input_word2idx)
-    num_target_tokens = len(target_word2idx)
-
-    config = dict()
-    config['input_word2idx'] = input_word2idx
-    config['input_idx2word'] = input_idx2word
-    config['target_word2idx'] = target_word2idx
-    config['target_idx2word'] = target_idx2word
-    config['num_input_tokens'] = num_input_tokens
-    config['num_target_tokens'] = num_target_tokens
-    config['max_input_seq_length'] = max_input_seq_length
-    config['max_target_seq_length'] = max_target_seq_length
-
-    return config
-
-LOAD_EXISTING_WEIGHTS = True
-np.random.seed(170110)
-report_dir_path = './reports'
-model_dir_path = './models'
-
-df = pd.read_csv('./data/df_to_model.csv')
+# Add the project root to the python path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from utils.data_loader import get_word2idx, get_embedding_matrix, get_dataset
 
 
-Y = df['target_text']
-X = df['input_text']
+def main(args):
+    # Load data
+    X, Y = get_dataset(args.data_path)
+    word2idx, idx2word = get_word2idx(X + Y)
+    embedding_matrix = get_embedding_matrix(word2idx, args.glove_path)
 
-config = fit_text(X, Y)
+    # Create model
+    config = {
+        'num_input_tokens': len(word2idx),
+        'max_input_seq_length': np.max([len(x) for x in X]),
+        'num_target_tokens': len(word2idx),
+        'max_target_seq_length': np.max([len(y) for y in Y]),
+        'input_word2idx': word2idx,
+        'input_idx2word': idx2word,
+        'target_word2idx': word2idx,
+        'target_idx2word': idx2word,
+        'embedding_matrix': embedding_matrix,
+    }
+    model = Seq2SeqSummarizer(config)
 
-summarizer = Seq2SeqSummarizer(config)
+    # Train model
+    history = model.fit(X, Y, X, Y, epochs=args.epochs, batch_size=args.batch_size, model_dir_path=args.model_dir)
 
-if LOAD_EXISTING_WEIGHTS:
-    summarizer.load_weights(weight_file_path=Seq2SeqSummarizer.get_weight_file_path(model_dir_path=model_dir_path))
+    # Plot and save history
+    plot_and_save_history(history, model.model_name, os.path.join(args.model_dir, 'history.png'))
 
-Xtrain, Xtest, Ytrain, Ytest = train_test_split(X, Y, test_size=0.2, random_state=42)
 
-history = summarizer.fit(Xtrain, Ytrain, Xtest, Ytest, epochs=100)
-
-history_plot_file_path = report_dir_path + '/' + Seq2SeqSummarizer.model_name + '-history.png'
-plot_and_save_history(history, summarizer.model_name, history_plot_file_path, metrics={'loss', 'accuracy'})
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--data_path', type=str, default='data/df_to_model.csv')
+    parser.add_argument('--glove_path', type=str, default='data/glove.6B.50d.txt')
+    parser.add_argument('--model_dir', type=str, default='models')
+    parser.add_argument('--epochs', type=int, default=10)
+    parser.add_argument('--batch_size', type=int, default=64)
+    args = parser.parse_args()
+    main(args)
