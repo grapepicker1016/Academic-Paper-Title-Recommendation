@@ -1,46 +1,43 @@
 # `utils` Directory Architecture
 
-## Directory Responsibility
+## Overview
 
-The `utils` directory is intended for **exploratory data analysis (EDA)**. It contains scripts and modules for parsing, analyzing, and visualizing the arXiv dataset. The primary goal of the code in this directory is to provide insights into the dataset's characteristics, such as category distributions and word frequencies.
+The `utils` directory is intended to house scripts and modules for exploratory data analysis (EDA) of the arXiv dataset. Its primary purpose is to provide insights into the data through statistics and visualizations, which can inform the modeling process.
 
-## File Breakdown and Interactions
+## File Breakdown
 
-The `utils` directory contains the following files:
+*   **`plots.py`**: A command-line script that provides an interface for generating plots based on the functions in `stats.py`. It's an executable script that interacts with the user.
+*   **`stats.py`**: A module containing functions for calculating various statistics about the dataset, such as category frequency and popularity. It is imported by `plots.py`.
+*   **`raw_df.py`**: A script that appears to be a leftover from the initial data processing phase. It contains a hardcoded absolute path and imports a missing module (`helpers.json_parser`), indicating it's likely broken and not in use.
 
--   **`stats.py`**: This file acts as a **library module** containing functions for statistical analysis of the dataset. It includes functions to calculate category vocabularies, count category frequencies, and identify popular categories. It is designed to be imported and used by other scripts, such as `plots.py`.
--   **`plots.py`**: This is an **executable script** that uses the functions from `stats.py` to generate and display visualizations of the data. It takes user input to determine which plot to generate. This script directly interacts with the `data` directory by reading the `raw.csv` file.
--   **`raw_df.py`**: This script appears to be a broken or legacy script for converting the raw JSON dataset into a CSV file. It contains a hardcoded absolute path and references a non-existent `helpers` module, making it unusable in its current state.
+## Current State and Philosophy
 
-These files are intended to interact primarily with the `data` directory, where the raw and processed datasets are stored.
+The `utils` directory currently has a mixed philosophy. It contains both a library-like module (`stats.py`) and executable scripts (`plots.py`, `raw_df.py`). This mix of concerns makes the directory less modular and harder to maintain.
 
-## Current Architecture and Philosophy
+The most significant architectural issue is the use of **hardcoded file paths** (e.g., `../data/raw.csv`). This makes the scripts brittle and not portable. They can only be run from the `utils` directory and rely on a specific directory structure.
 
-The code in the `utils` directory is written in a functional style, with a clear separation of concerns between data processing (`stats.py`) and visualization (`plots.py`). However, the directory suffers from several architectural issues:
+## Refactoring Plan
 
--   **Hardcoded File Paths**: Both `plots.py` and `stats.py` contain hardcoded relative paths to the data files (e.g., `../data/raw.csv`). This makes the scripts less portable and harder to use in different contexts.
--   **Mixed Concerns**: The directory mixes executable scripts (`plots.py`) with library modules (`stats.py`). While this is acceptable for a small project, it can become confusing as the codebase grows.
--   **Broken Code**: The `raw_df.py` script is currently broken and serves no purpose in the project.
--   **Lack of Configuration**: The scripts are not easily configurable. For example, the file paths and other parameters are hardcoded, requiring code changes for different use cases.
+The `utils` directory should be refactored to separate concerns and improve modularity and portability. The goal is to make the EDA tools more robust and easier to use.
 
-The overall philosophy appears to be one of rapid prototyping and experimentation, which is common in EDA. However, this has led to a lack of robustness and maintainability.
+1.  **Isolate Reusable Logic**: The functions in `stats.py` are reusable and should be treated as a library. The file should be cleaned up to remove any hardcoded paths and instead accept dataframes as arguments.
+2.  **Improve Scripts**: The `plots.py` script should be updated to use a library like `argparse` for command-line argument parsing instead of `input()`. This will make it easier to automate and use in different environments. It should also be updated to pass the data path as an argument.
+3.  **Remove Dead Code**: The `raw_df.py` script is broken and serves no purpose. It should be deleted.
+4.  **Consolidate Scripts**: The `plots.py` script could be merged with `stats.py` to create a single, more comprehensive EDA script with command-line options for different analyses. Alternatively, a new, cleaner script could be created that imports and uses the functions from `stats.py`.
 
-## Proposed Refactoring
+### Detailed Refactoring Steps
 
-To improve the architecture of the `utils` directory, the following refactoring steps are recommended:
-
-1.  **Isolate Reusable Logic**: Move the functions from `stats.py` into a more generalized `library` or `common` directory at the root of the project. This would make the statistical functions available to other parts of the application, not just the EDA scripts.
-2.  **Make Scripts Configurable**: Modify `plots.py` and any other scripts to accept command-line arguments for file paths and other parameters. This will make the scripts more flexible and reusable. The `argparse` module in Python would be suitable for this.
-3.  **Remove Broken Code**: Delete the `raw_df.py` script, as it is not functional and adds clutter to the directory. If its functionality is still needed, it should be rewritten to be more robust and configurable.
-4.  **Consolidate EDA Scripts**: Consider consolidating the EDA scripts into a single, well-documented script or a Jupyter Notebook. This would make the EDA process more organized and easier to follow.
+*   **`stats.py`**:
+    *   Modify functions like `populars` and `popularsbar` to accept a pandas DataFrame as an argument instead of a file path.
+    *   Remove any file reading operations from these functions. Data loading should be handled by the script that calls these functions.
+*   **`plots.py`**:
+    *   Add `argparse` to handle command-line arguments for the data path and the number of categories (`k`).
+    *   Load the data into a pandas DataFrame and pass it to the functions from `stats.py`.
+*   **`raw_df.py`**:
+    *   Delete this file.
 
 ## Refactoring Order
 
-The refactoring should be done in the following order:
-
-1.  **Delete `raw_df.py`**: This is the easiest and most immediate improvement.
-2.  **Refactor `stats.py` and `plots.py`**:
-    -   Move the functions from `stats.py` to a new, shared location.
-    -   Update `plots.py` to import from the new location.
-    -   Modify `plots.py` to accept command-line arguments for file paths.
-3.  **Update Documentation**: Update the `README.md` to reflect the changes and provide clear instructions on how to run the refactored EDA scripts.
+1.  **`raw_df.py`**: Delete this file first as it's dead code.
+2.  **`stats.py`**: Refactor this module to remove hardcoded paths and improve its API.
+3.  **`plots.py`**: Update this script to use the refactored `stats.py` module and `argparse`.
